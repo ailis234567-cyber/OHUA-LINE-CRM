@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# 项目特定
+screenshots/
+logs/
+*.log
+test_capture.jpg
+fullscreen*.jpg
+uploads/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 打包文件
+*.tar.gz
+live-monitor-vps/
+

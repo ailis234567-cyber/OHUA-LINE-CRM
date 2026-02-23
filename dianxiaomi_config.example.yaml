@@ -1,0 +1,26 @@
+# 店小秘 TikTok 订单自动备注机器人配置文件
+
+# 店小秘 API 配置
+dianxiaomi:
+  api_key: "your_api_key_here"  # 店小秘 API Key
+  api_secret: "your_api_secret_here"  # 店小秘 API Secret
+  base_url: "https://openapi.dianxiaomi.com"  # API 基础URL（根据实际情况调整）
+
+# TikTok 配置
+tiktok:
+  # 是否启用 TikTok API（如果店小秘订单数据中没有昵称，可以尝试从TikTok API获取）
+  api_enabled: false
+  api_url: "https://open-api.tiktokglobalshop.com"  # TikTok Shop API URL
+  access_token: "your_tiktok_access_token"  # TikTok API Access Token
+
+# 备注配置
+note_prefix: "TikTok昵称: "  # 备注前缀
+note_append: true  # 是否追加备注（True=追加，False=替换）
+
+# 运行配置
+run:
+  check_interval: 300  # 持续运行模式的检查间隔（秒）
+  batch_size: 100  # 每次处理的订单数量
+
+
+

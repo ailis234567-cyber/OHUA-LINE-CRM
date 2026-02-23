@@ -1,0 +1,14 @@
+monitor:
+  interval: 0.5
+  trigger_keyword: ID
+monitor_region:
+  height: 666
+  left: 34
+  top: 34
+  width: 340
+ocr:
+  use_gpu: false
+storage:
+  format: png
+  retina: true
+  save_dir: ./screenshots

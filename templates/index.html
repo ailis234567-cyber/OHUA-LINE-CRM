@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>直播监控截图查询系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 直播监控截图查询系统</h1>
+            <p class="subtitle">输入ID或编号搜索您的截图</p>
+        </header>
+
+        <div class="search-section">
+            <div class="search-box">
+                <select id="searchType" class="search-type-select" onchange="onSearchTypeChange()">
+                    <option value="auto">自动识别</option>
+                    <option value="id">按ID搜索</option>
+                    <option value="serial">按编号搜索</option>
+                    <option value="date">按日期搜索</option>
+                </select>
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    placeholder="请输入ID或编号" 
+                    autocomplete="off"
+                    style="display: block;"
+                >
+                <input 
+                    type="date" 
+                    id="dateInput" 
+                    style="display: none;"
+                >
+                <button id="searchBtn" onclick="searchImages()">🔍 搜索</button>
+            </div>
+            <div class="stats" id="stats">
+                <span id="totalImages">总图片数: 加载中...</span>
+            </div>
+        </div>
+
+        <!-- 截图速度统计图表 -->
+        <div class="chart-section" id="chartSection">
+            <div class="chart-header">
+                <h2>📊 截图速度统计（每20分钟，按日期分类）</h2>
+                <div class="chart-controls">
+                    <select id="dateSelector" class="date-select" onchange="loadChart()">
+                        <option value="">选择日期...</option>
+                    </select>
+                    <button id="refreshChart" onclick="loadChart()" class="refresh-btn">🔄 刷新</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="speedChart"></canvas>
+            </div>
+        </div>
+
+        <div class="results-section" id="resultsSection" style="display: none;">
+            <div class="results-header">
+                <h2 id="resultsTitle">搜索结果</h2>
+                <span id="resultsCount" class="count-badge"></span>
+            </div>
+            <div id="resultsContainer" class="results-container">
+                <!-- 结果将在这里显示 -->
+            </div>
+        </div>
+
+        <div class="empty-state" id="emptyState">
+            <div class="empty-icon">📷</div>
+            <p>请输入ID或编号进行搜索</p>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>搜索中...</p>
+        </div>
+    </div>
+
+    <!-- 图片预览模态框 -->
+    <div id="imageModal" class="modal" onclick="closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <img id="modalImage" src="" alt="预览图片">
+            <div class="image-info">
+                <p><strong>ID:</strong> <span id="modalId"></span></p>
+                <p><strong>编号:</strong> <span id="modalSerial"></span></p>
+                <p><strong>日期:</strong> <span id="modalDate"></span></p>
+                <p><strong>上传时间:</strong> <span id="modalTime"></span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 图表实例
+        let speedChart = null;
+
+        // 页面加载时获取统计信息
+        window.onload = function() {
+            loadStats();
+            loadChart();
+            // 回车搜索
+            document.getElementById('searchInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    searchImages();
+                }
+            });
+            document.getElementById('dateInput').addEventListener('change', function() {
+                // 日期改变时自动搜索
+                if (this.value) {
+                    searchImages();
+                }
+            });
+        };
+
+        // 搜索类型改变时的处理
+        function onSearchTypeChange() {
+            const searchType = document.getElementById('searchType').value;
+            const searchInput = document.getElementById('searchInput');
+            const dateInput = document.getElementById('dateInput');
+            
+            if (searchType === 'date') {
+                searchInput.style.display = 'none';
+                dateInput.style.display = 'block';
+                dateInput.focus();
+            } else {
+                searchInput.style.display = 'block';
+                dateInput.style.display = 'none';
+                searchInput.placeholder = searchType === 'id' ? '请输入ID' : 
+                                         searchType === 'serial' ? '请输入编号' : 
+                                         '请输入ID或编号';
+                searchInput.focus();
+            }
+        }
+
+        // 加载统计信息
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                document.getElementById('totalImages').textContent = `总图片数: ${data.total_images} | ID数量: ${data.total_ids}`;
+            } catch (error) {
+                console.error('加载统计失败:', error);
+            }
+        }
+
+        // 搜索图片
+        async function searchImages() {
+            const searchType = document.getElementById('searchType').value;
+            let query = '';
+            let dateFilter = '';
+            
+            if (searchType === 'date') {
+                dateFilter = document.getElementById('dateInput').value;
+                if (!dateFilter) {
+                    alert('请选择日期');
+                    return;
+                }
+            } else {
+                query = document.getElementById('searchInput').value.trim();
+                if (!query) {
+                    alert('请输入搜索关键词');
+                    return;
+                }
+            }
+
+            // 显示加载状态
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'none';
+
+            try {
+                let url = `/api/search?type=${encodeURIComponent(searchType)}`;
+                if (query) {
+                    url += `&q=${encodeURIComponent(query)}`;
+                }
+                if (dateFilter) {
+                    url += `&date=${encodeURIComponent(dateFilter)}`;
+                }
+                
+                const response = await fetch(url);
+                const data = await response.json();
+
+                document.getElementById('loading').style.display = 'none';
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                if (data.count === 0) {
+                    document.getElementById('emptyState').style.display = 'block';
+                    document.getElementById('emptyState').innerHTML = `
+                        <div class="empty-icon">🔍</div>
+                        <p>未找到匹配的图片</p>
+                        <p class="empty-hint">请检查ID或编号是否正确</p>
+                    `;
+                    return;
+                }
+
+                // 显示结果
+                displayResults(data);
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                alert('搜索失败: ' + error.message);
+            }
+        }
+
+        // 显示搜索结果
+        function displayResults(data) {
+            let typeText = '';
+            let queryText = '';
+            
+            if (data.type === 'id') {
+                typeText = '（按ID）';
+                queryText = data.query;
+            } else if (data.type === 'serial') {
+                typeText = '（按编号）';
+                queryText = data.query;
+            } else if (data.type === 'date') {
+                typeText = '（按日期）';
+                queryText = data.date_filter || data.query;
+            } else {
+                typeText = '（自动识别）';
+                queryText = data.query;
+            }
+            
+            document.getElementById('resultsTitle').textContent = `搜索结果: "${queryText}" ${typeText}`;
+            document.getElementById('resultsCount').textContent = `找到 ${data.count} 张图片`;
+            document.getElementById('resultsSection').style.display = 'block';
+
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            data.results.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'image-card';
+                card.innerHTML = `
+                    <div class="image-wrapper" onclick="showModal('${item.path}', '${item.id}', '${item.serial_number}', '${item.date}', '${item.modified}')">
+                        <img src="/api/images/${item.path}" alt="${item.filename}" loading="lazy">
+                        <div class="image-overlay">
+                            <span class="view-btn">👁️ 查看大图</span>
+                        </div>
+                    </div>
+                    <div class="image-details">
+                        <div class="detail-item">
+                            <span class="label">ID:</span>
+                            <span class="value">${item.id}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">编号:</span>
+                            <span class="value">${item.serial_number}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">日期:</span>
+                            <span class="value">${item.date}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 显示图片预览模态框
+        function showModal(imagePath, id, serial, date, time) {
+            document.getElementById('modalImage').src = `/api/images/${imagePath}`;
+            document.getElementById('modalId').textContent = id;
+            document.getElementById('modalSerial').textContent = serial;
+            document.getElementById('modalDate').textContent = date;
+            document.getElementById('modalTime').textContent = time;
+            document.getElementById('imageModal').style.display = 'block';
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('imageModal').style.display = 'none';
+        }
+
+        // ESC键关闭模态框
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // 加载图表数据
+        async function loadChart() {
+            try {
+                const response = await fetch('/api/analytics');
+                const data = await response.json();
+
+                console.log('API 返回数据:', data); // 调试信息
+
+                // 更新日期选择器
+                const dateSelector = document.getElementById('dateSelector');
+                let selectedDate = dateSelector.value; // 保存当前选择
+                
+                if (data.dates && data.dates.length > 0) {
+                    // 清空现有选项（保留第一个"选择日期..."选项）
+                    const firstOption = dateSelector.options[0];
+                    dateSelector.innerHTML = '';
+                    dateSelector.appendChild(firstOption);
+                    
+                    // 添加日期选项
+                    data.dates.forEach(date => {
+                        const option = document.createElement('option');
+                        const dateParts = date.split('-');
+                        option.value = date;
+                        option.textContent = `${dateParts[1]}-${dateParts[2]}`;
+                        dateSelector.appendChild(option);
+                    });
+                    
+                    // 如果没有选择日期，默认选择第一个
+                    if (!selectedDate && data.dates.length > 0) {
+                        selectedDate = data.dates[0];
+                        dateSelector.value = selectedDate;
+                    } else if (selectedDate) {
+                        // 恢复之前的选择
+                        dateSelector.value = selectedDate;
+                    }
+                }
+
+                // 获取选中的日期（使用更新后的值）
+                selectedDate = dateSelector.value;
+                console.log('选中的日期:', selectedDate); // 调试信息
+                
+                if (selectedDate && data.by_date && data.by_date[selectedDate]) {
+                    const dateData = data.by_date[selectedDate];
+                    console.log('日期数据:', dateData); // 调试信息
+                    drawSpeedChart(dateData, selectedDate);
+                } else if (selectedDate) {
+                    console.log('选中日期没有数据:', selectedDate);
+                    // 清空图表
+                    if (speedChart) {
+                        speedChart.destroy();
+                        speedChart = null;
+                    }
+                } else {
+                    console.log('没有选择日期');
+                    // 如果没有选择日期但有数据，尝试自动选择第一个
+                    if (data.dates && data.dates.length > 0 && !selectedDate) {
+                        console.log('自动选择第一个日期:', data.dates[0]);
+                        dateSelector.value = data.dates[0];
+                        selectedDate = data.dates[0];
+                        if (data.by_date && data.by_date[selectedDate]) {
+                            const dateData = data.by_date[selectedDate];
+                            console.log('日期数据:', dateData);
+                            drawSpeedChart(dateData, selectedDate);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('加载图表数据失败:', error);
+                console.error('错误详情:', error.stack);
+            }
+        }
+
+        // 绘制速度折线图
+        function drawSpeedChart(data, date) {
+            console.log('drawSpeedChart 被调用, data:', data, 'date:', date); // 调试信息
+            
+            const canvas = document.getElementById('speedChart');
+            if (!canvas) {
+                console.error('Canvas element not found!');
+                return;
+            }
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                console.error('Cannot get 2d context!');
+                return;
+            }
+            
+            // 检查数据是否为空
+            if (!data || data.length === 0) {
+                console.warn('数据为空，无法绘制图表');
+                if (speedChart) {
+                    speedChart.destroy();
+                    speedChart = null;
+                }
+                return;
+            }
+            
+            // 销毁旧图表
+            if (speedChart) {
+                speedChart.destroy();
+                speedChart = null;
+            }
+
+            // 格式化标签：只显示时间（HH:00, HH:20, 或 HH:40）
+            const labels = data.map(item => item.time);
+            const counts = data.map(item => item.count);
+            
+            console.log('图表数据 - labels:', labels.length, 'counts:', counts.length); // 调试信息
+
+            // 格式化日期显示
+            const dateParts = date.split('-');
+            const dateDisplay = `${dateParts[1]}-${dateParts[2]}`;
+
+            try {
+                // 检查 Chart 是否可用
+                if (typeof Chart === 'undefined') {
+                    console.error('Chart.js 未加载！');
+                    return;
+                }
+                
+                speedChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: `截图数量（${dateDisplay}，张/20分钟）`,
+                            data: counts,
+                            borderColor: 'rgb(102, 126, 234)',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 3,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        return `${dateDisplay} ${context[0].label}`;
+                                    },
+                                    label: function(context) {
+                                        return '截图数量: ' + context.parsed.y + ' 张/20分钟';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: '时间（每20分钟）'
+                                },
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 5
+                                },
+                                title: {
+                                    display: true,
+                                    text: '数量（张/20分钟）'
+                                }
+                            }
+                        }
+                    }
+                });
+                console.log('图表创建成功'); // 调试信息
+            } catch (error) {
+                console.error('Error creating chart:', error);
+                console.error('Error stack:', error.stack);
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,25 @@
+# 屏幕监控截图工具依赖
+
+# 屏幕截图
+mss>=9.0.0
+
+# OCR (PaddleOCR 3.x)
+paddleocr>=3.0.0
+paddlepaddle>=3.0.0
+
+# 图像处理
+opencv-python>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+
+# 配置
+pyyaml>=6.0
+
+# Web 应用
+flask>=3.0.0
+
+# 图像识别（可选，根据需要安装）
+# ultralytics>=8.0.0  # YOLOv8
+# torch>=2.0.0  # PyTorch
+# torchvision>=0.15.0  # torchvision
+

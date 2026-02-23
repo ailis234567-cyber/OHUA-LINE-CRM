@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    container_name: live-monitor-web
+    ports:
+      - "5001:5001"
+    volumes:
+      # 挂载截图目录（从 NAS 或本地）
+      - ../screenshots:/app/screenshots
+      # 挂载配置文件
+      - ../config.yaml:/app/config.yaml
+    restart: unless-stopped
+    environment:
+      - DEBUG=False
+    networks:
+      - live-monitor-network
+
+networks:
+  live-monitor-network:
+    driver: bridge
+
